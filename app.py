@@ -137,7 +137,7 @@ def format_duration(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
-def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: int, is_resume: bool = False):
+def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: int, is_resume: bool = False, filters: dict = None):
     """Background task to discover videos, hash them, and group them."""
     global abort_flag, pause_flag, hasher_instance, current_videos, current_fingerprints, current_params, scan_state
 
@@ -157,7 +157,13 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
                 scan_state['error'] = None
             
             logger.info(f"Scanning folders: {folders}")
-            videos = scan_folders(folders)
+            f = filters or {}
+            videos = scan_folders(
+                folders,
+                size_min=f.get('size_min'),
+                size_max=f.get('size_max'),
+                file_types=f.get('file_types'),
+            )
             current_videos = videos
             current_fingerprints = []
             
@@ -370,7 +376,8 @@ def start_scan():
             'folders': valid_folders,
             'threshold': threshold,
             'num_frames': num_frames,
-            'batch_size': batch_size
+            'batch_size': batch_size,
+            'filters': data.get('filters', {}),
         }
     else:
         # Load params from current_params if they exist
@@ -403,7 +410,7 @@ def start_scan():
 
     scan_thread = threading.Thread(
         target=run_scan,
-        args=(folders_to_scan, threshold, num_frames, batch_size, is_resume),
+        args=(folders_to_scan, threshold, num_frames, batch_size, is_resume, current_params.get('filters', {})),
         daemon=True
     )
     scan_thread.start()

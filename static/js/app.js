@@ -101,6 +101,38 @@ document.addEventListener('DOMContentLoaded', () => {
             : `${m}:${s.toString().padStart(2, '0')}`;
     };
 
+    const sizeToBytes = (val, unit) => {
+        if (!val && val !== 0) return null;
+        const n = parseFloat(val);
+        if (isNaN(n)) return null;
+        const multipliers = { 'KB': 1024, 'MB': 1024 * 1024, 'GB': 1024 * 1024 * 1024 };
+        return Math.round(n * (multipliers[unit] || 1));
+    };
+
+    const getFilterValues = () => {
+        const minVal = document.getElementById('filter-size-min').value;
+        const minUnit = document.getElementById('filter-size-min-unit').value;
+        const maxVal = document.getElementById('filter-size-max').value;
+        const maxUnit = document.getElementById('filter-size-max-unit').value;
+
+        const checkedTypes = [];
+        document.querySelectorAll('#filetype-grid input[type=checkbox]:checked').forEach(cb => {
+            checkedTypes.push(cb.value);
+        });
+
+        return {
+            size_min: sizeToBytes(minVal, minUnit),
+            size_max: sizeToBytes(maxVal, maxUnit),
+            file_types: checkedTypes.length > 0 ? checkedTypes : null,
+        };
+    };
+
+    window.toggleAllFileTypes = (state) => {
+        document.querySelectorAll('#filetype-grid input[type=checkbox]').forEach(cb => {
+            cb.checked = state;
+        });
+    };
+
     // ─── Setup Logic ───
 
     const addFolder = (path) => {
@@ -197,7 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     folders: folders,
                     threshold: parseFloat(inputs.threshold.value),
                     num_frames: parseInt(inputs.numFrames.value),
-                    batch_size: parseInt(inputs.batchSize.value)
+                    batch_size: parseInt(inputs.batchSize.value),
+                    filters: getFilterValues()
                 })
             });
 
