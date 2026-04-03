@@ -40,6 +40,53 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('Could not check FFmpeg status:', e);
         }
     })();
+
+    // ─── Hardware Acceleration Badge Logic ───
+    (async () => {
+        try {
+            const res = await fetch('/api/system-info');
+            const info = await res.json();
+
+            const badge = document.getElementById('header-accel-badge');
+            if (!badge) return;
+
+            // Remove existing badge classes
+            badge.className = 'logo-badge';
+
+            // Determine tiers
+            const hasCuda = info.cuda_available;
+            const hasVulkan = info.vulkan_available || info.ffmpeg_hwaccel === 'vulkan';
+            const hasOpenCL = info.ffmpeg_hwaccel === 'opencl';
+            const hasAnyFfmpegAccel = info.ffmpeg_hwaccel && info.ffmpeg_hwaccel !== 'software';
+            // Actually check what hasher instance is reporting if available, though on load it might not be initialized yet
+            // We rely on info.cuda_available / vulkan_available for PyTorch capabilities
+
+            if (hasCuda) {
+                badge.classList.add('badge-golden');
+                badge.textContent = 'CUDA • GPU ACCELERATED';
+            } else if (hasVulkan || hasOpenCL) {
+                badge.classList.add('badge-silver');
+                const label = hasVulkan ? 'VULKAN' : 'OPENCL';
+                badge.textContent = `${label} • GPU ACCELERATED`;
+            } else if (hasAnyFfmpegAccel) {
+                badge.classList.add('badge-yellow');
+                badge.textContent = `${info.ffmpeg_hwaccel.toUpperCase()} • DECODE ACCEL`;
+            } else if (info.torch_version) {
+                badge.classList.add('badge-bronze');
+                badge.textContent = 'CPU • NO HW ACCEL';
+            } else {
+                badge.classList.add('badge-brown');
+                badge.textContent = 'SOFTWARE ONLY';
+            }
+        } catch (e) {
+            console.warn('Failed to load system info for badge:', e);
+            const badge = document.getElementById('header-accel-badge');
+            if (badge) {
+                badge.className = 'logo-badge badge-brown';
+                badge.textContent = 'NO ACCELERATION DETECTED';
+            }
+        }
+    })();
     // ─── State ───
     let folders = [];
     let pollInterval = null;
