@@ -4,6 +4,13 @@ GPU-accelerated video duplicate finder with comprehensive web UI.
 """
 import os
 import sys
+import io
+
+# Ensure stdout/stderr handle unicode robustly on Windows
+if hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Ensure local dir is in path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -775,7 +782,11 @@ if __name__ == '__main__':
             js_api=api,
             background_color='#0f172a',
         )
-        webview.start(debug=False)
+        try:
+            webview.start(debug=False)
+        except KeyboardInterrupt:
+            # Expected on window close in some environments
+            pass
 
     except ImportError:
         logger.info("pywebview not found, falling back to webbrowser...")
