@@ -1,6 +1,7 @@
 """
 Frame extractor using FFmpeg - extracts keyframes from videos for comparison.
 Auto-discovers ffmpeg/ffprobe from common install locations if not on PATH.
+Hardware acceleration: auto-probes CUDA → Vulkan → OpenCL → D3D11VA → DXVA2 → software.
 """
 import subprocess
 import json
@@ -57,6 +58,43 @@ FFPROBE_BIN = _find_exe("ffprobe")
 
 logger.info(f"ffmpeg  -> {FFMPEG_BIN}")
 logger.info(f"ffprobe -> {FFPROBE_BIN}")
+
+
+# ── Hardware acceleration detection ───────────────────────────────────────────
+
+# Priority order: NVIDIA CUDA > cross-platform Vulkan > cross-platform OpenCL
+# > Windows-native D3D11VA > older Windows DXVA2 > pure software
+_HWACCEL_PRIORITY = ["cuda", "vulkan", "opencl", "d3d11va", "dxva2"]
+
+
+def _detect_hwaccel() -> str:
+    """Probe FFmpeg for the best available hardware decoder on this machine.
+
+    Returns the hwaccel name string (e.g. 'cuda', 'vulkan', 'opencl') or
+    an empty string when no GPU acceleration is available.
+    """
+    try:
+        r = subprocess.run(
+            [FFMPEG_BIN, "-hwaccels"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+        )
+        available = {line.strip().lower() for line in r.stdout.splitlines()} | \
+                    {line.strip().lower() for line in r.stderr.splitlines()}
+    except Exception as exc:
+        logger.warning(f"Could not probe FFmpeg hwaccels: {exc}")
+        return ""
+
+    for accel in _HWACCEL_PRIORITY:
+        if accel in available:
+            logger.info(f"FFmpeg hwaccel selected: {accel}")
+            return accel
+
+    logger.info("No GPU hwaccel found – FFmpeg will use software decoding.")
+    return ""
+
+
+FFMPEG_HWACCEL: str = _detect_hwaccel()
 
 
 def check_ffmpeg() -> dict:
@@ -123,11 +161,28 @@ def get_video_info(video_path: str) -> Optional[dict]:
         return None
 
 
+def _run_ffmpeg_extract(cmd: List[str], num_frames: int) -> List[Image.Image]:
+    """Run an FFmpeg command that pipes PNG frames to stdout; return parsed frames."""
+    result = subprocess.run(
+        cmd, capture_output=True, timeout=60,
+        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+    )
+    if result.returncode == 0 and len(result.stdout) > 0:
+        frames: List[Image.Image] = []
+        raw_frames = result.stdout.split(b"\x89PNG\r\n\x1a\n")
+        for chunk in raw_frames[1:]:
+            if chunk:
+                frames.append(Image.open(io.BytesIO(b"\x89PNG\r\n\x1a\n" + chunk)).convert("RGB"))
+        return frames[:num_frames]
+    return []
+
+
 def extract_frames(video_path: str, num_frames: int = 24,
                    target_size: Tuple[int, int] = (224, 224)) -> List[Image.Image]:
     """
-    Extract frames at fixed intervals using concurrent FFmpeg processes.
-    If possible, uses CUDA hardware acceleration for decoding.
+    Extract frames at fixed intervals using a single FFmpeg process.
+    Hardware acceleration priority: CUDA → Vulkan → OpenCL → D3D11VA → DXVA2 → software.
+    Falls back automatically if the accelerated decode fails.
     """
     info = get_video_info(video_path)
     if not info:
@@ -136,48 +191,45 @@ def extract_frames(video_path: str, num_frames: int = 24,
     duration = info.get("duration", 0.0)
     interval = 1.5
     timestamps = [float(i * interval) for i in range(num_frames)]
-    
+
     if duration > 0:
         timestamps = [ts for ts in timestamps if ts < duration]
         if len(timestamps) < num_frames:
             new_interval = duration / (num_frames + 1)
             timestamps = [new_interval * (i + 1) for i in range(num_frames)]
 
-    hw_args = ["-hwaccel", "cuda"] if "cuda" in str(FFMPEG_BIN).lower() or True else []
+    vf = (
+        f"select=eq(pict_type\\,I),"
+        f"scale={target_size[0]}:{target_size[1]}:force_original_aspect_ratio=increase,"
+        f"crop={target_size[0]}:{target_size[1]}"
+    )
+    base_tail = [
+        "-i", video_path,
+        "-vf", vf,
+        "-vsync", "vfr",
+        "-vframes", str(num_frames),
+        "-f", "image2pipe",
+        "-vcodec", "png",
+        "-an",
+        "pipe:1",
+    ]
 
-    try:
-        # Instead of launching 24 ffmpeg calls per video (which exhausts NVDEC limits),
-        # launch exactly ONE ffmpeg process that extracts num_frames sequentially.
-        cmd = [
-            FFMPEG_BIN, '-y'
-        ] + hw_args + [
-            '-i', video_path,
-            # Fastest way: just pull I-frames (keyframes). Avoids full decoding.
-            '-vf', f'select=eq(pict_type\\,I),scale={target_size[0]}:{target_size[1]}:force_original_aspect_ratio=increase,crop={target_size[0]}:{target_size[1]}',
-            '-vsync', 'vfr',
-            '-vframes', str(num_frames),
-            '-f', 'image2pipe',
-            '-vcodec', 'png',
-            '-an',
-            'pipe:1'
-        ]
-        
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=60,
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
-        )
-        
-        if result.returncode == 0 and len(result.stdout) > 0:
-            frames = []
-            # Split the pipe data into individual PNG sequences
-            raw_frames = result.stdout.split(b'\x89PNG\r\n\x1a\n')
-            for chunk in raw_frames[1:]:
-                if chunk:
-                    frames.append(Image.open(io.BytesIO(b'\x89PNG\r\n\x1a\n' + chunk)).convert("RGB"))
-            return frames[:num_frames]
-        
-    except Exception as e:
-        logger.debug(f"Frame extraction error: {e}")
+    # Build candidate command list: accelerated first, then plain software
+    candidates: List[List[str]] = []
+    if FFMPEG_HWACCEL:
+        candidates.append([FFMPEG_BIN, "-y", "-hwaccel", FFMPEG_HWACCEL] + base_tail)
+    candidates.append([FFMPEG_BIN, "-y"] + base_tail)  # pure software fallback
+
+    for cmd in candidates:
+        accel_label = cmd[3] if "-hwaccel" in cmd else "software"
+        try:
+            frames = _run_ffmpeg_extract(cmd, num_frames)
+            if frames:
+                logger.debug(f"extract_frames: {len(frames)} frames via {accel_label}")
+                return frames
+            logger.debug(f"extract_frames: {accel_label} returned 0 frames, trying next...")
+        except Exception as exc:
+            logger.debug(f"extract_frames [{accel_label}] error: {exc}, trying next...")
 
     return []
 

@@ -633,13 +633,19 @@ def ffmpeg_status():
 
 @app.route('/api/system-info')
 def system_info():
-    """Get system GPU/CUDA info."""
+    """Get system GPU / acceleration info (CUDA, Vulkan, OpenCL, FFmpeg hwaccel)."""
     import torch
+    from extractor import FFMPEG_HWACCEL, FFMPEG_BIN, _HWACCEL_PRIORITY
+    import subprocess as _sp
+
+    # ── PyTorch device info ──────────────────────────────────────────────────
     info = {
         'cuda_available': torch.cuda.is_available(),
         'device_count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
         'devices': [],
         'torch_version': torch.__version__,
+        # Vulkan experimental backend
+        'vulkan_available': bool(hasattr(torch, 'is_vulkan_available') and torch.is_vulkan_available()),
     }
 
     if torch.cuda.is_available():
@@ -652,6 +658,30 @@ def system_info():
             })
         info['cudnn_version'] = torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None
         info['cuda_version'] = torch.version.cuda
+
+    # ── Active PyTorch hasher backend ────────────────────────────────────────
+    if hasher_instance is not None:
+        info['torch_device'] = hasher_instance.get_device_info()
+    else:
+        info['torch_device'] = {'backend': 'not_initialized'}
+
+    # ── FFmpeg hardware acceleration ─────────────────────────────────────────
+    info['ffmpeg_hwaccel'] = FFMPEG_HWACCEL or 'software'
+
+    # List all hwaccels this FFmpeg binary actually supports
+    try:
+        r = _sp.run(
+            [FFMPEG_BIN, '-hwaccels'],
+            capture_output=True, text=True, timeout=5,
+            creationflags=_sp.CREATE_NO_WINDOW if hasattr(_sp, 'CREATE_NO_WINDOW') else 0,
+        )
+        supported = [
+            line.strip() for line in r.stdout.splitlines()
+            if line.strip() and line.strip().lower() != 'hardware acceleration methods:'
+        ]
+        info['ffmpeg_hwaccels_supported'] = supported
+    except Exception:
+        info['ffmpeg_hwaccels_supported'] = []
 
     return jsonify(info)
 
