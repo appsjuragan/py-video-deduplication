@@ -14,13 +14,13 @@ graph TD
     UI[🖥️ pywebview / Vanilla JS UI]:::cpu --> API[🐍 Flask Backend / app.py]:::cpu
     API --> DB[(SQLAlchemy Cache)]:::storage
 
-    subgraph Phase 1: O(1) CPU Fast-Filter
+    subgraph "Phase 1: O(1) CPU Fast-Filter"
         API --> Prob[ffprobe Metadata Extractor]:::cpu
         Prob -- Retrieves Duration & Resolution --> Filter{Resolution Match?}
         Filter -- Unique / No Match --> EarlyStop[Discard early. Save VRAM]:::fail
     end
 
-    subgraph Phase 2: Asynchronous Pipelining (Double-Buffering)
+    subgraph "Phase 2: Asynchronous Pipelining (Double-Buffering)"
         Filter -- Match possible --> ThreadPool[Concurrent CPU Extraction Pool]:::cpu
         ThreadPool -- Extract N Frames --> FFmpeg[24x FFmpeg Workers]:::cpu
         FFmpeg --> Buffer[RAM Frame Buffer Layer]:::storage
@@ -29,13 +29,13 @@ graph TD
         GPUStream -- Feeds -- FP16 Tensors --> TensorCores(NVIDIA Tensor Cores):::gpu
     end
 
-    subgraph GPU-Bound Semantic Analysis
+    subgraph "GPU-Bound Semantic Analysis"
         TensorCores -- Batch size dynamically tuned via VRAM probe --> EfficientNet[EfficientNet-B0 Feature Extractor]:::gpu
         EfficientNet --> Norm[L2 Normalization]:::gpu
         Norm --> FeatureSpace[1280-Dim Vectors]:::storage
     end
 
-    subgraph Phase 3: Vectorized Similarity
+    subgraph "Phase 3: Vectorized Similarity"
         FeatureSpace --> Numpy[Vectorized Chamfer Metric]:::cpu
         Numpy --> Threshold{Similarity > 95%?}
         Threshold -- Yes --> Groups[Duplicate Video Groups]:::storage
