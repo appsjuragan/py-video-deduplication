@@ -435,7 +435,7 @@ h4 {
 
 .folder-empty {
     text-align: center;
-    padding: 32px;
+    padding: 8px;
     color: var(--text-muted);
     border: 2px dashed var(--border);
     border-radius: var(--radius-md);
@@ -1500,4 +1500,8 @@ input[type="number"].input-sm {
     .setup-hero h2 {
         font-size: 2rem;
     }
+}
+
+body {
+    background-color: #0f172a;
 }

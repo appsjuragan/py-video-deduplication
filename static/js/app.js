@@ -1,3 +1,11 @@
+window.addEventListener('load', () => {
+    const preloader = document.getElementById('app-preloader');
+    if (preloader) {
+        preloader.style.opacity = '0';
+        setTimeout(() => preloader.remove(), 400);
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     // ─── FFmpeg availability check ───
     (async () => {
@@ -155,8 +163,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (folders.length === 0) {
             folderList.innerHTML = `
                 <div class="folder-empty">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                    <p>No folders added yet. Type a folder path below.</p>
+                    <svg width="40" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <p>No folders added yet.</p>
                 </div>
             `;
             return;

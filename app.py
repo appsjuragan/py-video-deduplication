@@ -729,6 +729,7 @@ if __name__ == '__main__':
             width=1440, height=900,
             min_size=(1024, 700),
             js_api=api,
+            background_color='#0f172a',
         )
         webview.start(debug=False)
 

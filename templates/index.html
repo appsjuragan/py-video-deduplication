@@ -14,7 +14,17 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
-<body>
+<body style="background-color: #0f172a;">
+    <!-- ─── Preloader ─── -->
+    <div id="app-preloader"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0f172a; z-index: 99999; display: flex; align-items: center; justify-content: center; transition: opacity 0.4s ease-out;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10"></path>
+        </svg>
+    </div>
+
     <!-- ─── Background Effects ─── -->
     <div class="bg-effects">
         <div class="bg-orb bg-orb-1"></div>
@@ -108,7 +118,7 @@
                                         <path
                                             d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                                     </svg>
-                                    <p>No folders added yet. Type a folder path above or paste paths.</p>
+                                    <p>No folders added yet.</p>
                                 </div>
                             </div>
                             <div class="folder-input-row">
@@ -181,7 +191,7 @@
                             <div class="filter-grid">
                                 <!-- File Filters -->
                                 <div class="filter-group">
-                                    <label class="filter-label">File Filters</label>
+                                    <label class="filter-label">Size</label>
 
                                     <!-- Size Row -->
                                     <div class="size-range-row">
@@ -195,7 +205,7 @@
                                                 <option value="GB">GB</option>
                                             </select>
                                         </div>
-                                        <span class="size-separator">—</span>
+
                                         <div class="size-input-group">
                                             <span class="size-label">Max</span>
                                             <input type="number" id="filter-size-max" class="input input-sm" min="0"
@@ -212,7 +222,10 @@
                                     <!-- Type Row (Bottom Row of filters) -->
                                     <div class="filetype-section"
                                         style="margin-top: 12px; border-top: 1px solid var(--border-light); padding-top: 16px;">
+                                        <label class="filter-label">File Type</label>
+
                                         <div class="filetype-grid" id="filetype-grid">
+
                                             <label class="ft-chip active"><input type="checkbox" value=".mp4"
                                                     checked><span>MP4</span></label>
                                             <label class="ft-chip active"><input type="checkbox" value=".mkv"
