@@ -303,7 +303,7 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
 
         def compare_progress(curr, total):
             with scan_lock:
-                if abort_event.is_set():
+                if abort_flag:
                     return
                 scan_state['progress'] = curr
                 scan_state['current_file'] = f"Batch filtering and matching..."
