@@ -4,13 +4,13 @@ A high-performance pipeline architecture desktop application for finding and rem
 
 It is highly robust for detecting videos that have been resized, compressed, or slightly visually altered, backed by an optimized hardware-aware pipeline designed to saturate RTX NVIDIA hardware using FP16 mixed precision and asynchronous double buffering.
 
-![Video Deduplicator UI Preview](static/img/validating_files.gif)
+![Video Deduplicator UI Preview](static/img/scanning_files.gif)
 
 ## Features
 
 - **Blazing Fast GPU Acceleration:** Uses CUDA Tensor Cores (FP16 mixed precision) for neural network-based video frame fingerprinting.
 - **Asynchronous Pipelining:** Features a double-buffered architecture, aggressively extracting the next video batch via FFmpeg threading while the GPU simultaneously crunches the current batch.
-- **Hardware-Aware Auto Tuning:** Probes runtime VRAM availability to dynamically scale tensor batch limits while enabling `cuDNN` benchmarking auto-tuning. Graceful OOM recoveries prevent crashes.
+- **Hardware-Aware Auto Tuning:** Deep probes the host for CPU logical cores, active NVDEC decoder engines, and PyTorch free VRAM mapping. It strictly generates a tuned `hw_profile.json` (leaving safe hardware headroom for user OS tasks) to skip constant polling overheads. OOM recoveries are guaranteed natively.
 - **O(1) CPU Fast Filtering:** Prunes impossible matches strictly through zero-decode `ffprobe` metadata queries before ANY frames touch the deep learning layer.
 - **Content-Based Similarity:** Employs Deep Feature embeddings (EfficientNet-B0) rather than basic file hashing, effectively detecting compressed, slightly altered, or differing format videos as exact matches.
 - **Interactive UI:** Built using a Python backend (Flask) with an elegant, responsive frontend inside a native desktop window (using `pywebview`).
