@@ -647,9 +647,32 @@ input[type="number"].input-sm {
     border-color: var(--accent-primary);
 }
 
+/* ─── Setup Columns Layout ─── */
+.setup-columns {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+.setup-column-left,
+.setup-column-right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Remove default margin on .setup-section inside columns since gap handles it now */
+.setup-columns .setup-section {
+    margin-bottom: 0;
+    height: 100%;
+}
+
 .setup-actions {
     margin-top: 40px;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    align-items: center;
 }
 
 /* ─── Progress Panel ─── */
