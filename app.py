@@ -243,9 +243,9 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
                 scan_state['elapsed'] = elapsed
                 if i > 0:
                     eta = (elapsed / i) * (len(videos) - i)
-                    scan_state['message'] = f'Massive Parallel Hashing: {scan_state["progress"]}/{len(videos)} (ETA: {format_duration(eta)})'
+                    scan_state['message'] = f'Matching videos: {scan_state["progress"]}/{len(videos)} (ETA: {format_duration(eta)})'
                 else:
-                    scan_state['message'] = f'Starting Massive Parallel Hashing ({len(videos)} videos)...'
+                    scan_state['message'] = f'Start matching ({len(videos)} videos)...'
 
             # 1. Concurrent Extraction (Threaded FFmpeg)
             all_video_frames = [[] for _ in range(len(batch_chunk))]

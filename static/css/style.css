@@ -374,6 +374,7 @@ h4 {
     font-size: 2.5rem;
     margin-bottom: 16px;
     background: var(--gradient-brand);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -517,6 +518,7 @@ h4 {
 }
 
 .slider {
+    appearance: none;
     -webkit-appearance: none;
     width: 100%;
     height: 6px;
@@ -741,6 +743,7 @@ h4 {
 
 .stat-value.highlight {
     background: var(--gradient-brand);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -800,34 +803,28 @@ h4 {
 }
 
 /* ─── Cat Animation ─── */
-@keyframes cat-run {
-    0% {
-        transform: translateY(0) rotate(0deg);
+@keyframes cat-run-sprite {
+    from {
+        background-position: 0;
     }
 
-    25% {
-        transform: translateY(-3px) rotate(3deg);
+    to {
+        background-position: -160px;
     }
 
-    50% {
-        transform: translateY(0) rotate(0deg);
-    }
-
-    75% {
-        transform: translateY(-2px) rotate(-3deg);
-    }
-
-    100% {
-        transform: translateY(0) rotate(0deg);
-    }
+    /* 4 frames * 40px each */
 }
 
 .cat-running {
     display: inline-block;
-    animation-name: cat-run;
+    width: 40px;
+    height: 40px;
+    background-image: url('../img/cat_run.png');
+    background-size: 160px 40px;
+    background-repeat: no-repeat;
+    animation-name: cat-run-sprite;
     animation-iteration-count: infinite;
-    animation-timing-function: linear;
-    transform-origin: center;
+    animation-timing-function: steps(4);
 }
 
 .cat-slow {
@@ -897,11 +894,12 @@ h4 {
 
 .video-item {
     display: grid;
-    grid-template-columns: 180px 1fr auto;
+    grid-template-columns: 32px 180px 1fr auto;
     gap: 12px;
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     transition: background 0.2s;
+    align-items: center;
 }
 
 .video-item:hover {
@@ -917,19 +915,70 @@ h4 {
 }
 
 .video-item.original::before {
-    content: 'Best Quality / Original';
+    content: '';
+    display: none;
+}
+
+/* ─── Checkbox ─── */
+.video-checkbox-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.video-checkbox-wrap input[type="checkbox"] {
+    display: none;
+}
+
+.video-checkbox-custom {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.video-checkbox-wrap input[type="checkbox"]:checked+.video-checkbox-custom {
+    background: var(--danger);
+    border-color: var(--danger);
+}
+
+.video-checkbox-wrap input[type="checkbox"]:checked+.video-checkbox-custom::after {
+    content: '✓';
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.video-checkbox-wrap:hover .video-checkbox-custom {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.3);
+}
+
+/* ─── BEST Badge ─── */
+.video-best-badge {
     position: absolute;
-    top: -10px;
-    left: 24px;
+    top: 6px;
+    left: 6px;
     background: var(--success);
     color: var(--bg-base);
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: 0.65rem;
+    font-weight: 800;
     text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
     z-index: 10;
     font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
 }
 
 .video-thumb-cont {

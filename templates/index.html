@@ -38,14 +38,8 @@
                     <h1>Video Deduplicator</h1>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span class="logo-badge">CUDA • GPU Accelerated</span>
-                        <div id="gpu-cat" class="cat-running cat-slow"
-                            style="display:none; color: var(--accent-tertiary); max-height:20px;"
-                            title="GPU Utilization">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                <path
-                                    d="M12,8L10.6,6H9.4L10,8.2V9H8.6L7,6.8V6H5V8.5L5.5,9.5L5,10.6V13L4,14V17H5V20H7V18H10V20H12V17H13L15,16V13C15,13 17,14 18,14C19,14 19.5,13 20,12C20.5,13 21,14 22,14C23,14 23,13 23,13L20,10.5C20,10.5 19,9.5 18,9.5C17,9.5 16,10.5 16,10.5V8.5L14,6.5L12,8Z" />
-                            </svg>
-                        </div>
+                        <div id="gpu-cat" class="cat-running cat-slow" style="display:none; transform: scale(0.6);"
+                            title="GPU Utilization"></div>
                         <span id="gpu-cat-text"
                             style="display:none; font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">0%</span>
                     </div>
@@ -85,7 +79,7 @@
             <div class="panel-content">
                 <div class="setup-hero">
                     <div class="hero-icon">
-                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="url(#grad1)"
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="url(#grad1)"
                             stroke-width="1.5">
                             <defs>
                                 <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -98,10 +92,7 @@
                             <line x1="12" y1="3" x2="12" y2="15" />
                         </svg>
                     </div>
-                    <h2>Find Duplicate Videos</h2>
-                    <p class="hero-desc">Select folders to scan. The app uses deep learning on your GPU to fingerprint
-                        videos and find near-identical content — even if files have different names, sizes, or
-                        encodings.</p>
+                    <p class="hero-desc">Select folders to scan.</p>
                 </div>
 
                 <!-- Folder Selection -->
@@ -311,7 +302,17 @@
                             All Videos
                         </button>
                     </div>
-                    <div class="results-actions">
+                    <div class="results-actions" style="display:flex; gap:8px; align-items:center;">
+                        <button id="btn-delete-checked" class="btn btn-danger btn-sm" onclick="deleteCheckedFiles()"
+                            disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path
+                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                            Delete Checked (<span id="checked-count">0</span>)
+                        </button>
                         <button id="btn-new-scan" class="btn btn-primary btn-sm">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">

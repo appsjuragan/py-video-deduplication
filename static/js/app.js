@@ -415,6 +415,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const maxSim = g.max_similarity || (g.videos[1] ? g.videos[1].similarity : 0) || 0;
             const simStr = isNaN(maxSim) ? '0.00' : (maxSim * 100).toFixed(2);
 
+            // Find the "best" file: highest resolution (w*h), then largest file size
+            let bestIdx = 0;
+            let bestScore = 0;
+            g.videos.forEach((v, vi) => {
+                const w = v.width || 0;
+                const h = v.height || 0;
+                const pixels = w * h;
+                const sz = v.size || 0;
+                const score = pixels * 1e12 + sz; // resolution dominates, size is tiebreaker
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIdx = vi;
+                }
+            });
+
             return `
                 <div class="group-card" style="animation-delay: ${idx * 0.1}s">
                     <div class="group-header">
@@ -428,17 +443,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="video-list">
-                        ${g.videos.map((v, vidx) => renderVideoItem(v, vidx === 0, g.group_id)).join('')}
+                        ${g.videos.map((v, vidx) => renderVideoItem(v, vidx === bestIdx, g.group_id)).join('')}
                     </div>
                 </div>
             `;
         }).join('');
+
+        updateCheckedCount();
     };
 
-    const renderVideoItem = (v, isOriginal, groupId) => {
+    const renderVideoItem = (v, isBest, groupId) => {
+        const escapedPath = v.path.replace(/\\/g, '\\\\');
+        const autoChecked = !isBest; // auto-check duplicates, leave best unchecked
         return `
-            <div class="video-item ${isOriginal ? 'original' : ''}" id="vid-${v.index}">
-                <div class="video-thumb-cont" onclick="previewVideo('${v.path.replace(/\\/g, '\\\\')}')">
+            <div class="video-item ${isBest ? 'original' : ''}" id="vid-${v.index}">
+                <label class="video-checkbox-wrap" title="${isBest ? 'Best quality — kept' : 'Duplicate — marked for deletion'}">
+                    <input type="checkbox" class="video-checkbox" data-path="${escapedPath}" data-index="${v.index}" ${autoChecked ? 'checked' : ''} onchange="updateCheckedCount()">
+                    <span class="video-checkbox-custom"></span>
+                </label>
+                <div class="video-thumb-cont" onclick="previewVideo('${escapedPath}')">
                     <img src="/api/thumbnail/${v.index}" class="video-thumb" onload="this.classList.add('loaded')" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100%\\' height=\\'100%\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%23334155\\' stroke-width=\\'1\\'%3E%3Crect x=\\'2\\' y=\\'2\\' width=\\'20\\' height=\\'20\\' rx=\\'2.18\\' ry=\\'2.18\\'/%3E%3Cline x1=\\'7\\' y1=\\'2\\' x2=\\'7\\' y2=\\'22\\'/%3E%3Cline x1=\\'17\\' y1=\\'2\\' x2=\\'17\\' y2=\\'22\\'/%3E%3C/svg%3E'">
                     <div class="play-overlay">
                         <div class="play-btn">
@@ -446,9 +469,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="video-duration">${v.duration_str}</div>
+                    ${isBest ? '<div class="video-best-badge">★ BEST</div>' : ''}
                 </div>
                 <div class="video-info">
-                    <div class="video-name" title="${v.name}" onclick="openFile('${v.path.replace(/\\/g, '\\\\')}')">${v.name}</div>
+                    <div class="video-name" title="${v.name}" onclick="openFile('${escapedPath}')">${v.name}</div>
                     <div class="video-meta">
                         <span class="meta-item text-primary">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/></svg>
@@ -458,30 +482,78 @@ document.addEventListener('DOMContentLoaded', () => {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             ${v.size_str}
                         </span>
-                        ${!isOriginal ? `
+                        ${!isBest ? `
                         <span class="meta-item text-warning">
                             Match: ${isNaN(v.similarity) ? '0.00' : (v.similarity * 100).toFixed(2)}%
                         </span>` : ''}
                     </div>
-                    <div class="video-path" onclick="openFolder('${v.path.replace(/\\/g, '\\\\')}')" title="Open in Explorer">
+                    <div class="video-path" onclick="openFolder('${escapedPath}')" title="Open in Explorer">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                         ${v.folder}
                     </div>
                 </div>
                 <div class="video-actions">
-                    <button class="btn btn-outline btn-sm" onclick="openFile('${v.path.replace(/\\/g, '\\\\')}')">
+                    <button class="btn btn-outline btn-sm" onclick="openFile('${escapedPath}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         Play
                     </button>
-                    ${!isOriginal ? `
-                    <button class="btn btn-danger btn-sm" onclick="deleteFile('${v.path.replace(/\\/g, '\\\\')}', ${v.index})">
+                    <button class="btn btn-danger btn-sm" onclick="deleteFile('${escapedPath}', ${v.index})">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                         Delete
                     </button>
-                    ` : ''}
                 </div>
             </div>
         `;
+    };
+
+    // ─── Checked Count & Bulk Delete ───
+
+    window.updateCheckedCount = () => {
+        const checked = document.querySelectorAll('.video-checkbox:checked');
+        const countEl = document.getElementById('checked-count');
+        const btnDel = document.getElementById('btn-delete-checked');
+        if (countEl) countEl.textContent = checked.length;
+        if (btnDel) btnDel.disabled = checked.length === 0;
+    };
+
+    window.deleteCheckedFiles = async () => {
+        const checked = document.querySelectorAll('.video-checkbox:checked');
+        if (checked.length === 0) return;
+        if (!confirm(`Are you sure you want to delete ${checked.length} file(s)?\n(They will be moved to the Recycle Bin if possible)`)) return;
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const cb of checked) {
+            const path = cb.dataset.path;
+            const idx = cb.dataset.index;
+            try {
+                const res = await fetch('/api/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                if (res.ok) {
+                    successCount++;
+                    const el = document.getElementById(`vid-${idx}`);
+                    if (el) {
+                        el.style.opacity = '0';
+                        el.style.transform = 'scale(0.95)';
+                        setTimeout(() => el.remove(), 300);
+                    }
+                } else {
+                    failCount++;
+                }
+            } catch {
+                failCount++;
+            }
+        }
+
+        setTimeout(() => {
+            updateCheckedCount();
+            const msg = `Deleted ${successCount} file(s).` + (failCount > 0 ? ` ${failCount} failed.` : '');
+            alert(msg);
+        }, 400);
     };
 
     btnNewScan.addEventListener('click', () => resetScan());
