@@ -549,6 +549,13 @@ h4 {
     gap: 24px;
 }
 
+/* ─── Filters ─── */
+.filter-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .filter-group {
     display: flex;
     flex-direction: column;
@@ -608,13 +615,13 @@ input[type="number"].input-sm {
 
 /* File type chips */
 .filetype-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
 }
 
 .ft-chip {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     cursor: pointer;
     user-select: none;
@@ -625,22 +632,24 @@ input[type="number"].input-sm {
 }
 
 .ft-chip span {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: var(--radius-full);
-    font-size: 0.78rem;
+    flex: 1;
+    text-align: center;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
     font-weight: 600;
     font-family: var(--font-mono);
     border: 1px solid var(--border);
     color: var(--text-muted);
-    background: transparent;
+    background: rgba(15, 23, 42, 0.4);
     transition: all 0.2s;
 }
 
 .ft-chip input[type="checkbox"]:checked+span {
-    background: rgba(99, 102, 241, 0.15);
+    background: rgba(99, 102, 241, 0.25);
     border-color: var(--accent-primary);
     color: var(--accent-primary);
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.2);
 }
 
 .ft-chip:hover span {
@@ -650,29 +659,52 @@ input[type="number"].input-sm {
 /* ─── Setup Columns Layout ─── */
 .setup-columns {
     display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 24px;
+    grid-template-columns: 1fr 340px;
+    gap: 32px;
+    margin-top: 20px;
 }
 
-.setup-column-left,
-.setup-column-right {
+.setup-column-left {
     display: flex;
     flex-direction: column;
     gap: 24px;
 }
 
-/* Remove default margin on .setup-section inside columns since gap handles it now */
+.setup-column-right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    height: fit-content;
+}
+
 .setup-columns .setup-section {
     margin-bottom: 0;
-    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Redefine sections in left column to look like cards again */
+.setup-column-left .setup-section {
+    background: rgba(51, 65, 85, 0.2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 24px;
 }
 
 .setup-actions {
-    margin-top: 40px;
+    margin-top: 48px;
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     gap: 16px;
     align-items: center;
+    border-top: 1px solid var(--border-light);
+    padding-top: 24px;
 }
 
 /* ─── Progress Panel ─── */
