@@ -15,6 +15,14 @@ if hasattr(sys.stderr, 'buffer'):
 # Ensure local dir is in path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ── Hardware Contention Optimization ───────────────────────────────────
+# Prevent background libs (OpenMP, MKL) from over-allocating CPU cores
+# This keeps the main orchestrator responsive for GPU feeding.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+# Ensure torch/cuda initialization doesn't block
+os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+
 import json
 import time
 import base64
@@ -28,7 +36,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 
 from scanner import scan_folders
-from extractor import extract_frames, extract_thumbnail, get_video_info
+from extractor import extract_frames, extract_thumbnail, get_video_info, extract_metadata, get_vram_free_mb
 from hasher import VideoHasher
 from comparator import find_duplicate_groups
 
@@ -224,13 +232,73 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
                     scan_state['start_time'] = time.time() - scan_state.get('elapsed', 0)
 
         videos = current_videos
+
+        # ── Phase 1.5: CPU Fast-Filter (dimension pre-check) ───────────────
+        # Group videos by resolution so only same-res candidates reach the GPU.
+        # Videos that are already fingerprinted (resume case) are skipped.
+        if not is_resume:
+            with scan_lock:
+                scan_state['status'] = 'processing'
+                scan_state['message'] = 'CPU fast-filter: grouping by resolution…'
+
+            from collections import defaultdict
+            res_groups: dict = defaultdict(list)
+            for vid in videos:
+                key = (vid.get('width', 0), vid.get('height', 0))
+                res_groups[key].append(vid)
+
+            # Flatten: keep insertion order, but tag each video with its group key
+            # so the comparator later only compares within the same resolution group.
+            for vid in videos:
+                vid['_res_key'] = (vid.get('width', 0), vid.get('height', 0))
+
+            singleton_keys = {k for k, v in res_groups.items() if len(v) < 2}
+            eliminated = sum(len(res_groups[k]) for k in singleton_keys)
+            if eliminated:
+                logger.info(
+                    f"CPU fast-filter: eliminated {eliminated} video(s) with unique resolutions "
+                    f"(no possible duplicate). {len(videos) - eliminated} remain for GPU."
+                )
+
+            # ── Early Stop ────────────────────────────────────────────────
+            gpu_candidates = [v for v in videos if v['_res_key'] not in singleton_keys]
+            if not gpu_candidates:
+                with scan_lock:
+                    scan_state['status'] = 'done'
+                    scan_state['message'] = (
+                        'CPU fast-filter eliminated all candidates — no duplicates possible. '
+                        'GPU phase skipped.'
+                    )
+                    scan_state['videos'] = videos
+                    scan_state['groups'] = []
+                    scan_state['stats'] = {
+                        'total_videos': len(videos),
+                        'duplicate_groups': 0,
+                        'total_duplicates': 0,
+                        'potential_savings': '0 B',
+                        'potential_savings_bytes': 0,
+                        'elapsed': format_duration(time.time() - scan_state['start_time']),
+                        'device': 'CPU fast-filter (early stop)',
+                    }
+                logger.info('Early stop: all candidates eliminated by CPU fast-filter.')
+                return
         
         # ── Phase 2: Massive Parallel Extract and Hash ──────────────────
         if hasher_instance is None:
-            hasher_instance = VideoHasher(batch_size=128)
+            # Dynamically pick batch_size from current free VRAM
+            free_mb = get_vram_free_mb()
+            if free_mb > 0:
+                mb_per_frame = 12  # conservative for EfficientNet-B0 at 224x224
+                dynamic_bs = max(16, int(free_mb * 0.80 / mb_per_frame))
+                logger.info(f"VRAM fast-read: {free_mb:.0f} MB free → initial batch_size={dynamic_bs}")
+            else:
+                dynamic_bs = 128
+            hasher_instance = VideoHasher(batch_size=dynamic_bs)
 
-        # Batch videos for processing (concurrency)
-        batch_v_size = 8
+        # 2. Pipeline Optimization: Double-Buffering (Overlap CPU Extraction and GPU Compute)
+        # batch_v_size is the count of *videos* to process per pipeline stage
+        batch_v_size = 16  # Increased from 8 to saturate NVDEC
+        extractor_threads = 24 # High concurrency for FFmpeg
         import concurrent.futures
         
         # Ensure num_frames is set from params if resuming
@@ -239,43 +307,59 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
 
         start_index = len(current_fingerprints)
         
-        # We start from start_index and process in batches
-        for i in range(start_index, len(videos), batch_v_size):
-            if abort_flag: break
-            while pause_flag and not abort_flag: time.sleep(0.5)
-
-            # Ensure we don't go out of bounds
-            batch_chunk = videos[i : min(i + batch_v_size, len(videos))]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=extractor_threads) as executor:
+            next_batch_future = None
             
-            with scan_lock:
-                scan_state['status'] = 'processing'
-                scan_state['total'] = len(videos)  # Ensure total is always correct
-                scan_state['progress'] = min(i + batch_v_size, len(videos))
-                scan_state['current_file'] = f"Processing batch {i//batch_v_size + 1}..."
-                elapsed = time.time() - scan_state['start_time']
-                scan_state['elapsed'] = elapsed
-                if i > 0:
-                    eta = (elapsed / i) * (len(videos) - i)
-                    scan_state['message'] = f'Matching videos: {scan_state["progress"]}/{len(videos)} (ETA: {format_duration(eta)})'
+            def extract_batch_v(chunk, n_frames):
+                results = [[] for _ in range(len(chunk))]
+                def _extract_one(idx, path):
+                    nonlocal results
+                    results[idx] = extract_frames(path, num_frames=n_frames)
+                
+                # Single chunk has multiple videos, extract them in parallel
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunk)) as inner_exec:
+                    inner_futures = [inner_exec.submit(_extract_one, j, vid['path']) for j, vid in enumerate(chunk)]
+                    concurrent.futures.wait(inner_futures)
+                return results
+
+            for i in range(start_index, len(videos), batch_v_size):
+                if abort_flag: break
+                while pause_flag and not abort_flag: time.sleep(0.5)
+
+                # Current chunk details
+                batch_chunk = videos[i : min(i + batch_v_size, len(videos))]
+                
+                with scan_lock:
+                    scan_state['progress'] = i
+                    scan_state['current_file'] = f"Processing batch {i//batch_v_size + 1}/{ (len(videos)-start_index)//batch_v_size + 1 }..."
+                    elapsed = time.time() - scan_state['start_time']
+                    scan_state['elapsed'] = elapsed
+                    if i > start_index:
+                        eta = (elapsed / (i - start_index + 1)) * (len(videos) - i)
+                        scan_state['message'] = f'Analyzing: {i}/{len(videos)} (ETA: {format_duration(eta)})'
+                
+                # ── Pipeline Step 1: Get frames (either from prefetch or fresh) ──
+                if next_batch_future is None:
+                    # First iteration: must extract now
+                    current_video_frames = extract_batch_v(batch_chunk, num_frames)
                 else:
-                    scan_state['message'] = f'Start matching ({len(videos)} videos)...'
+                    # Subsequent iterations: wait for prefetch to finish
+                    current_video_frames = next_batch_future.result()
 
-            # 1. Concurrent Extraction (Threaded FFmpeg)
-            all_video_frames = [[] for _ in range(len(batch_chunk))]
-            
-            def extract_batch_v(idx, path):
-                all_video_frames[idx] = extract_frames(path, num_frames=num_frames)
+                # ── Pipeline Step 2: Prefetch NEXT batch in background ──
+                next_start = i + batch_v_size
+                if next_start < len(videos):
+                    next_chunk = videos[next_start : min(next_start + batch_v_size, len(videos))]
+                    next_batch_future = executor.submit(extract_batch_v, next_chunk, num_frames)
+                else:
+                    next_batch_future = None
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=batch_v_size) as executor:
-                futures = [executor.submit(extract_batch_v, j, vid['path']) for j, vid in enumerate(batch_chunk)]
-                concurrent.futures.wait(futures)
-
-            # 2. Massive GPU Fingerprinting (Batch across videos)
-            fps = hasher_instance.compute_batch_fingerprints(all_video_frames)
-            current_fingerprints.extend(fps)
-            
-            # Periodically save state
-            save_session()
+                # ── Pipeline Step 3: GPU Fingerprinting (while prefetching) ──
+                fps = hasher_instance.compute_batch_fingerprints(current_video_frames)
+                current_fingerprints.extend(fps)
+                
+                # Periodically save state
+                save_session()
 
         if abort_flag:
             with scan_lock:
@@ -461,7 +545,9 @@ def get_status():
             'current_file': scan_state['current_file'],
             'message': scan_state['message'],
             'elapsed': scan_state.get('elapsed', 0),
-            'gpu_util': gpu_util
+            'gpu_util': gpu_util,
+            'gpu_batch_size': hasher_instance.batch_size if hasher_instance else None,
+            'vram_free_mb': round(get_vram_free_mb(), 1),
         })
 
 

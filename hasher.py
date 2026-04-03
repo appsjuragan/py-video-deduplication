@@ -33,6 +33,16 @@ class VideoHasher:
         self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
         self.model.classifier = nn.Identity()
         self.model = self.model.to(self.device)
+        
+        # Performance Tuning: Enable cuDNN benchmarking for auto-tuning kernels
+        if self.device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+            # Use Mixed Precision (FP16) for ~2x throughput on Tensor Cores
+            self.model = self.model.half() 
+            self.stream = torch.cuda.Stream()
+        else:
+            self.stream = None
+
         self.model.eval()
 
         self.transform = transforms.Compose([
@@ -61,23 +71,29 @@ class VideoHasher:
             device = torch.device("cuda")
             gpu_name = torch.cuda.get_device_name(0)
 
-            # Try to read free VRAM via pynvml for optimal batch sizing
+            # Dynamic batch sizing: use free VRAM for optimal throughput
+            # FP16 reduced MB_PER_FRAME significantly (~6 MB vs ~12 MB)
+            MB_PER_FRAME = 6  # Headroom for FP16 EfficientNet-B0
             try:
                 import pynvml
                 pynvml.nvmlInit()
                 handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                 mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 free_vram_mb = mem_info.free / 1024 ** 2
-                optimal_batch = int((free_vram_mb * 0.9) / 10)
-                self.batch_size = max(batch_size, optimal_batch)
-                logger.info(
-                    f"CUDA GPU: {gpu_name} ({free_vram_mb:.0f} MB free) → batch_size={self.batch_size}"
-                )
-            except Exception as exc:
-                logger.warning(f"pynvml unavailable: {exc}")
-                vram_mb = torch.cuda.get_device_properties(0).total_memory / 1024 ** 2
-                logger.info(f"CUDA GPU: {gpu_name} ({vram_mb:.0f} MB total) → batch_size={self.batch_size}")
+            except Exception:
+                try:
+                    free, _ = torch.cuda.mem_get_info(0)
+                    free_vram_mb = free / 1024 ** 2
+                except Exception:
+                    free_vram_mb = torch.cuda.get_device_properties(0).total_memory / 1024 ** 2 * 0.8
 
+            # Be bolder with VRAM: Use 90% of free VRAM
+            computed = max(32, int(free_vram_mb * 0.90 / MB_PER_FRAME))
+            self.batch_size = max(batch_size, computed)
+            logger.info(
+                f"CUDA GPU: {gpu_name} ({free_vram_mb:.0f} MB free) "
+                f"→ dynamic batch_size={self.batch_size}"
+            )
             return device, f"cuda:{gpu_name}"
 
         # 2. Vulkan (experimental torch-vulkan backend, available in some nightly builds)
@@ -113,26 +129,52 @@ class VideoHasher:
         """
         Extract feature vectors from a batch of frames on the active device.
         Returns L2-normalized vectors as a NumPy array.
+        Includes OOM recovery: if VRAM runs out, batch_size is halved and retried.
         """
         features_list = []
         n = frames_batch.shape[0]
+        i = 0
+        working_bs = self.batch_size
 
-        for i in range(0, n, self.batch_size):
-            batch = frames_batch[i:i + self.batch_size].to(self.device)
-            features = self.model(batch)  # (B, 1280)
+        while i < n:
+            try:
+                # ── Asynchronous Stream ───────────────────────────────────
+                with torch.cuda.stream(self.stream):
+                    # Slice and move to device as FP16
+                    batch = frames_batch[i:i + working_bs]
+                    if self.device.type == "cuda":
+                        batch = batch.to(self.device, non_blocking=True).half()
+                    else:
+                        batch = batch.to(self.device)
 
-            # L2-normalize every frame feature
-            norms = torch.norm(features, p=2, dim=1, keepdim=True)
-            features = features / (norms + 1e-6)
+                    features = self.model(batch)          # (B, feature_dim)
 
-            features_list.append(features.cpu().numpy())
+                    # L2-normalize every frame feature
+                    norms = torch.norm(features, p=2, dim=1, keepdim=True)
+                    features = features / (norms + 1e-6)
 
-            del batch
-            # Clear CUDA cache if applicable
-            if self.device.type == "cuda":
+                    # Accumulate results (transfer back to CPU)
+                    features_list.append(features.cpu().float().numpy())
+                    i += working_bs  # advance only on success
+
+            except torch.cuda.OutOfMemoryError:
+                # ── OOM Recovery ──────────────────────────────────────────
+                del batch
                 torch.cuda.empty_cache()
+                new_bs = max(1, working_bs // 2)
+                logger.warning(
+                    f"CUDA OOM! Halving batch size: {working_bs} → {new_bs}"
+                )
+                working_bs = new_bs
+                self.batch_size = new_bs  # persist for future calls
+                continue   # retry the same slice with smaller batch
 
-        return np.concatenate(features_list, axis=0)
+            finally:
+                del batch
+                if self.device.type == "cuda":
+                    torch.cuda.empty_cache()
+
+        return np.concatenate(features_list, axis=0) if features_list else np.empty((0, self.feature_dim))
 
     def compute_video_fingerprint(self, frames: List[Image.Image]) -> Optional[np.ndarray]:
         """

@@ -114,6 +114,81 @@ def check_ffmpeg() -> dict:
 
 # ── Video info / frame extraction ─────────────────────────────────────────────
 
+def extract_metadata(filepath: str) -> dict:
+    """
+    CPU Fast-Filter: Wraps ffprobe to instantly return duration, size, and
+    dimensions WITHOUT decoding any video frames.  O(1) per file.
+    Returns a dict with keys: duration, size, width, height.
+    """
+    default = {"duration": 0.0, "size": 0, "width": 0, "height": 0}
+    if not os.path.exists(filepath):
+        return default
+    try:
+        cmd = [
+            FFPROBE_BIN, "-v", "quiet",
+            "-print_format", "json",
+            "-show_format", "-show_streams",
+            filepath
+        ]
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+        )
+        if r.returncode != 0:
+            return default
+        data = json.loads(r.stdout)
+    except Exception as exc:
+        logger.warning(f"extract_metadata failed for {filepath}: {exc}")
+        return default
+
+    def _f(val) -> float:
+        try:
+            return float(val) if val and str(val).lower() != "n/a" else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    fmt = data.get("format", {})
+    duration = _f(fmt.get("duration", 0))
+    size = int(fmt.get("size", 0) or 0)
+    width = height = 0
+    for s in data.get("streams", []):
+        if s.get("codec_type") == "video":
+            width = int(s.get("width", 0) or 0)
+            height = int(s.get("height", 0) or 0)
+            if duration <= 0:
+                duration = _f(s.get("duration", 0))
+            break
+    if size == 0:
+        try:
+            size = os.path.getsize(filepath)
+        except OSError:
+            pass
+    return {"duration": duration, "size": size, "width": width, "height": height}
+
+
+def get_vram_free_mb() -> float:
+    """
+    Return free VRAM in MB on the primary CUDA device.
+    Returns 0.0 when CUDA is unavailable or pynvml is not installed.
+    """
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        return mem.free / 1024 ** 2
+    except Exception:
+        pass
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, _ = torch.cuda.mem_get_info(0)
+            return free / 1024 ** 2
+    except Exception:
+        pass
+    return 0.0
+
+
 def get_video_info(video_path: str) -> Optional[dict]:
     """Get video metadata using ffprobe."""
     try:
