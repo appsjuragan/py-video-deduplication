@@ -26,11 +26,11 @@ graph TD
         FFmpeg --> Buffer[RAM Frame Buffer Layer]:::storage
         
         Buffer -- Prefetched Batch N+1 --> GPUStream[CUDA Non-Blocking Stream]:::gpu
-        GPUStream -- Feeds -- FP16 Tensors --> TensorCores(NVIDIA Tensor Cores):::gpu
+        GPUStream -- "Feeds FP16 Tensors" --> TensorCores(NVIDIA Tensor Cores):::gpu
     end
 
     subgraph "GPU-Bound Semantic Analysis"
-        TensorCores -- Batch size dynamically tuned via VRAM probe --> EfficientNet[EfficientNet-B0 Feature Extractor]:::gpu
+        TensorCores -- "Batch size dynamically tuned via VRAM probe" --> EfficientNet[EfficientNet-B0 Feature Extractor]:::gpu
         EfficientNet --> Norm[L2 Normalization]:::gpu
         Norm --> FeatureSpace[1280-Dim Vectors]:::storage
     end
