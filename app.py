@@ -298,8 +298,22 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
         with scan_lock:
             scan_state['status'] = 'comparing'
             scan_state['message'] = 'Computing similarity matrix and finding duplicates...'
+            scan_state['progress'] = 0
+            scan_state['total'] = len(videos)
 
-        groups = find_duplicate_groups(videos, current_fingerprints, threshold=threshold)
+        def compare_progress(curr, total):
+            with scan_lock:
+                if abort_event.is_set():
+                    return
+                scan_state['progress'] = curr
+                scan_state['current_file'] = f"Batch filtering and matching..."
+
+        groups = find_duplicate_groups(
+            videos, 
+            current_fingerprints, 
+            threshold=threshold,
+            progress_callback=compare_progress
+        )
 
         # ── Done ───────────────────────────────────────────────────────
         total_dupes = sum(g['count'] for g in groups)

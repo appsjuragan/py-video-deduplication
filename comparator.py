@@ -3,7 +3,7 @@ Vectorized similarity computation and clustering for video fingerprints.
 Uses Chamfer-style frame-to-frame matching for robust clip detection.
 """
 import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 def compute_video_similarity(fp1: np.ndarray, fp2: np.ndarray) -> float:
     """
@@ -35,9 +35,15 @@ def compute_video_similarity(fp1: np.ndarray, fp2: np.ndarray) -> float:
         
     return float(max(0.0, min(1.0, score)))
 
-def find_duplicate_groups(videos: List[Dict], fingerprints: List[Optional[np.ndarray]], threshold: float = 0.90) -> List[Dict]:
+def find_duplicate_groups(
+    videos: List[Dict], 
+    fingerprints: List[Optional[np.ndarray]], 
+    threshold: float = 0.90,
+    progress_callback: Optional[Callable[[int, int], None]] = None
+) -> List[Dict]:
     """
     Clusters videos into duplicate groups based on frame-wise Chamfer similarity.
+    Highly optimized for large batches using vectorized NumPy operations.
     threshold: 0.90 is usually safe for semantic matching.
     """
     num_videos = len(videos)
@@ -46,19 +52,58 @@ def find_duplicate_groups(videos: List[Dict], fingerprints: List[Optional[np.nda
 
     # Filter out videos without fingerprints
     valid_indices = [i for i, fp in enumerate(fingerprints) if fp is not None]
-    if len(valid_indices) < 2:
+    N = len(valid_indices)
+    if N < 2:
         return []
 
-    # Map for union-find or adjacency
+    # 1. Fast Vectorization Precomputations
+    # Get frame counts and flat offsets mapping
+    lengths = np.array([len(fingerprints[i]) for i in valid_indices], dtype=int)
+    starts = np.zeros(N, dtype=int)
+    ends = np.zeros(N, dtype=int)
+    
+    curr = 0
+    for i in range(N):
+        starts[i] = curr
+        ends[i] = curr + lengths[i]
+        curr += lengths[i]
+        
+    # Concatenate all valid features into a single universe matrix shape (TotalFrames, Dim)
+    X = np.concatenate([fingerprints[i] for i in valid_indices], axis=0)
+
+    # 2. Compute Adjacency Matrix
     adjacency = {i: [] for i in valid_indices}
     
     # Compute pairwise similarities for all valid videos
     for i_idx, i in enumerate(valid_indices):
-        for j in valid_indices[i_idx + 1:]:
-            sim = compute_video_similarity(fingerprints[i], fingerprints[j])
+        if progress_callback and i_idx % 10 == 0:
+            progress_callback(i_idx, N)
+            
+        fp_i = fingerprints[i] # (F_i, Dim)
+        sim_i_all = np.dot(fp_i, X.T) # (F_i, TotalFrames)
+        
+        # Score v2_to_v1: How well frames of j match frames of i
+        max_sim_to_i = np.max(sim_i_all, axis=0) # (TotalFrames,)
+        v2_to_v1_sum = np.add.reduceat(max_sim_to_i, starts) # (N,)
+        v2_to_v1_all = v2_to_v1_sum / lengths
+        
+        # Score v1_to_v2: How well frames of i match frames of j
+        max_j = np.maximum.reduceat(sim_i_all, starts, axis=1) # (F_i, N)
+        v1_to_v2_all = np.mean(max_j, axis=0) # (N,)
+        
+        # Combined Score
+        sims = (v1_to_v2_all + v2_to_v1_all) * 0.5
+        
+        # Process valid matches
+        for j_idx in range(i_idx + 1, N):
+            sim = float(sims[j_idx])
             if sim >= threshold:
+                j = valid_indices[j_idx]
                 adjacency[i].append((j, sim))
                 adjacency[j].append((i, sim))
+
+    if progress_callback:
+        progress_callback(N, N)
 
     # Find connected components (groups)
     visited = set()
