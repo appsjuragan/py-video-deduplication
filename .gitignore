@@ -29,3 +29,4 @@ Thumbs.db
 # Project Specific
 session_state.pkl
 comparer.log
+hw_profile.json

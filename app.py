@@ -46,7 +46,7 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("comparer.log", mode="a")
+        logging.FileHandler("comparer.log", mode="a", encoding="utf-8")
     ]
 )
 logger = logging.getLogger(__name__)
@@ -239,7 +239,7 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
         if not is_resume:
             with scan_lock:
                 scan_state['status'] = 'processing'
-                scan_state['message'] = 'CPU fast-filter: grouping by resolution…'
+                scan_state['message'] = 'CPU fast-filter: grouping by resolution...'
 
             from collections import defaultdict
             res_groups: dict = defaultdict(list)
@@ -266,7 +266,7 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
                 with scan_lock:
                     scan_state['status'] = 'done'
                     scan_state['message'] = (
-                        'CPU fast-filter eliminated all candidates — no duplicates possible. '
+                        'CPU fast-filter eliminated all candidates - no duplicates possible. '
                         'GPU phase skipped.'
                     )
                     scan_state['videos'] = videos
@@ -285,20 +285,19 @@ def run_scan(folders: List[str], threshold: float, num_frames: int, batch_size: 
         
         # ── Phase 2: Massive Parallel Extract and Hash ──────────────────
         if hasher_instance is None:
-            # Dynamically pick batch_size from current free VRAM
-            free_mb = get_vram_free_mb()
-            if free_mb > 0:
-                mb_per_frame = 12  # conservative for EfficientNet-B0 at 224x224
-                dynamic_bs = max(16, int(free_mb * 0.80 / mb_per_frame))
-                logger.info(f"VRAM fast-read: {free_mb:.0f} MB free → initial batch_size={dynamic_bs}")
-            else:
-                dynamic_bs = 128
+            # Use hardware profile for calibrated GPU batch size
+            from hw_profile import load_profile as _lp
+            _hw = _lp()
+            dynamic_bs = _hw.get('gpu_batch_size', 128)
+            logger.info(f"Using profiled gpu_batch_size={dynamic_bs}")
             hasher_instance = VideoHasher(batch_size=dynamic_bs)
 
         # 2. Pipeline Optimization: Double-Buffering (Overlap CPU Extraction and GPU Compute)
-        # batch_v_size is the count of *videos* to process per pipeline stage
-        batch_v_size = 16  # Increased from 8 to saturate NVDEC
-        extractor_threads = 24 # High concurrency for FFmpeg
+        # Use hardware profile for calibrated values (with user headroom)
+        from hw_profile import load_profile
+        hw = load_profile()
+        batch_v_size = hw.get('batch_v_size', 8)
+        extractor_threads = hw.get('extractor_threads', 6)
         import concurrent.futures
         
         # Ensure num_frames is set from params if resuming
@@ -789,6 +788,13 @@ def system_info():
         info['ffmpeg_hwaccels_supported'] = supported
     except Exception:
         info['ffmpeg_hwaccels_supported'] = []
+
+    # ── Hardware Profile (cached pipeline settings) ──────────────────────────
+    try:
+        from hw_profile import load_profile, get_profile_summary
+        info['hw_profile'] = get_profile_summary(load_profile())
+    except Exception:
+        info['hw_profile'] = {}
 
     return jsonify(info)
 
