@@ -571,20 +571,21 @@ h4 {
 .size-range-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: space-between;
 }
 
 .size-input-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .size-label {
     font-size: 0.8rem;
     color: var(--text-muted);
     font-weight: 500;
-    min-width: 28px;
 }
 
 .input-sm {
@@ -594,18 +595,19 @@ h4 {
 }
 
 input[type="number"].input-sm {
-    width: 80px;
+    width: 65px;
 }
 
 .select-unit {
-    width: 64px;
+    width: 58px;
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 8px center;
-    padding-right: 24px;
+    background-position: right 6px center;
+    padding-right: 20px;
+    padding-left: 6px;
 }
 
 .size-separator {
