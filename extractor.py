@@ -1,7 +1,7 @@
 """
 Frame extractor using FFmpeg - extracts keyframes from videos for comparison.
 Auto-discovers ffmpeg/ffprobe from common install locations if not on PATH.
-Hardware acceleration: auto-probes CUDA → Vulkan → OpenCL → D3D11VA → DXVA2 → software.
+Hardware acceleration: auto-probes CUDA -> Vulkan -> OpenCL -> D3D11VA -> DXVA2 -> software.
 """
 import subprocess
 import json
@@ -76,7 +76,7 @@ def _detect_hwaccel() -> str:
     try:
         r = subprocess.run(
             [FFMPEG_BIN, "-hwaccels"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5,
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
         )
         available = {line.strip().lower() for line in r.stdout.splitlines()} | \
@@ -131,7 +131,7 @@ def extract_metadata(filepath: str) -> dict:
             filepath
         ]
         r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=15,
+            cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15,
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
         )
         if r.returncode != 0:
@@ -199,7 +199,7 @@ def get_video_info(video_path: str) -> Optional[dict]:
             video_path
         ]
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30,
+            cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
         )
         if result.returncode != 0:
@@ -256,7 +256,7 @@ def extract_frames(video_path: str, num_frames: int = 24,
                    target_size: Tuple[int, int] = (224, 224)) -> List[Image.Image]:
     """
     Extract frames at fixed intervals using a single FFmpeg process.
-    Hardware acceleration priority: CUDA → Vulkan → OpenCL → D3D11VA → DXVA2 → software.
+    Hardware acceleration priority: CUDA -> Vulkan -> OpenCL -> D3D11VA -> DXVA2 -> software.
     Falls back automatically if the accelerated decode fails.
     """
     info = get_video_info(video_path)
