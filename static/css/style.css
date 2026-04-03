@@ -1021,6 +1021,41 @@ input[type="number"].input-sm {
     animation-timing-function: steps(4);
 }
 
+.emoji-runner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    font-size: 32px;
+    line-height: 1;
+    animation-name: emoji-wobble;
+    animation-iteration-count: infinite;
+    animation-timing-function: ease-in-out;
+}
+
+@keyframes emoji-wobble {
+    0% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    25% {
+        transform: translateY(-3px) rotate(-5deg);
+    }
+
+    50% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    75% {
+        transform: translateY(-3px) rotate(5deg);
+    }
+
+    100% {
+        transform: translateY(0) rotate(0deg);
+    }
+}
+
 .cat-slow {
     animation-duration: 0.8s;
 }

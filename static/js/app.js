@@ -64,19 +64,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hasCuda) {
                 badge.classList.add('badge-golden');
                 badge.textContent = 'CUDA • GPU ACCELERATED';
+                window.activeAnimal = 'cat';
             } else if (hasVulkan || hasOpenCL) {
                 badge.classList.add('badge-silver');
                 const label = hasVulkan ? 'VULKAN' : 'OPENCL';
                 badge.textContent = `${label} • GPU ACCELERATED`;
+                window.activeAnimal = 'kitten';
             } else if (hasAnyFfmpegAccel) {
                 badge.classList.add('badge-yellow');
                 badge.textContent = `${info.ffmpeg_hwaccel.toUpperCase()} • DECODE ACCEL`;
+                window.activeAnimal = 'kitten';
             } else if (info.torch_version) {
                 badge.classList.add('badge-bronze');
                 badge.textContent = 'CPU • NO HW ACCEL';
+                window.activeAnimal = 'turtle';
             } else {
                 badge.classList.add('badge-brown');
                 badge.textContent = 'SOFTWARE ONLY';
+                window.activeAnimal = 'turtle';
             }
         } catch (e) {
             console.warn('Failed to load system info for badge:', e);
@@ -382,14 +387,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const util = state.gpu_util || 0;
                 gpuText.textContent = `${Math.round(util)}%`;
 
-                gpuCat.classList.remove('cat-slow', 'cat-medium', 'cat-fast');
-                // <50 slow run, >=51 medium run >75 fast  run
-                if (util > 75) {
-                    gpuCat.classList.add('cat-fast');
-                } else if (util >= 51) {
-                    gpuCat.classList.add('cat-medium');
+                const speedClass = util > 75 ? 'cat-fast' : util >= 51 ? 'cat-medium' : 'cat-slow';
+
+                if (window.activeAnimal === 'kitten') {
+                    gpuCat.className = `emoji-runner ${speedClass}`;
+                    gpuCat.textContent = '🐱';
+                } else if (window.activeAnimal === 'turtle') {
+                    gpuCat.className = `emoji-runner ${speedClass}`;
+                    gpuCat.textContent = '🐢';
                 } else {
-                    gpuCat.classList.add('cat-slow');
+                    gpuCat.className = `cat-running ${speedClass}`;
+                    gpuCat.textContent = '';
                 }
             }
         }
